@@ -1,0 +1,22 @@
+--If citizen has overdue loan, the credit report will reduce
+CREATE OR REPLACE TRIGGER update_credit_report
+BEFORE INSERT ON bank_records
+FOR EACH ROW
+BEGIN
+  -- 检查是否存在对应的政府市民记录
+  IF :new.IDENTITY_CARD_ID IS NOT NULL THEN
+    -- 计算日期差值（以天为单位）
+    DECLARE
+      date_difference NUMBER;
+    BEGIN
+      date_difference := TRUNC(:new.loan_overdue_date) - TRUNC(SYSDATE);
+    
+      -- 如果日期差值小于 1，减少信用分 10 分
+      IF date_difference < 0 THEN
+        UPDATE government_citizen
+        SET credit_report = credit_report + 10*date_difference
+        WHERE IDENTITY_CARD_ID = :new.IDENTITY_CARD_ID;
+      END IF;
+    END;
+  END IF;
+END;
