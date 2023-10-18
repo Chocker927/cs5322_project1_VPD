@@ -1,0 +1,38 @@
+--Policy of police to restrict select and update
+CREATE OR REPLACE FUNCTION SECURITY_POLICY_FUNCTION1(
+    schema_var IN VARCHAR2,
+    table_var IN VARCHAR2
+) RETURN VARCHAR2 AS
+   user_count NUMBER;
+   result_condition VARCHAR2(1000);
+
+BEGIN
+    IF USER = 'SYSTEM' THEN
+        result_condition := '1=1'; 
+    ELSE
+        SELECT COUNT(*)
+        INTO user_count
+        FROM PUBLIC_SECURITY_EMPLOYEE
+        WHERE IDENTITY_CARD_ID = USER;
+        
+        IF user_count > 0 THEN
+            RETURN 'SYSTEM.PUBLIC_SECURITY.ADDRESS IN (SELECT ADDRESS FROM SYSTEM.PUBLIC_SECURITY_EMPLOYEE WHERE IDENTITY_CARD_ID = SYS_CONTEXT(''USERENV'', ''SESSION_USER''))'; -- 仅允许对应辖区ADDRESS的公安访问数据。
+        ELSE
+            result_condition := 'IDENTITY_CARD_ID = ''' || SYS_CONTEXT('USERENV', 'SESSION_USER') || '''';
+            RETURN result_condition;
+        END IF; 
+    END IF; 
+END SECURITY_POLICY_FUNCTION1;
+
+
+BEGIN
+    DBMS_RLS.ADD_POLICY (
+        object_schema     => 'SYSTEM',
+        object_name       => 'PUBLIC_SECURITY',
+        policy_name       => 'SECURITY_POLICY1',
+        policy_function   => 'SECURITY_POLICY_FUNCTION1',
+        statement_types   => 'SELECT',
+        update_check      => FALSE,
+        enable            => TRUE
+    );
+END; --启动SECURITY_POLICY1策略
