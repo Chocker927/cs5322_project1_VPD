@@ -1,0 +1,58 @@
+CREATE ROLE CENTRAL_DOCTOR;
+GRANT SELECT, INSERT, UPDATE, DELETE ON HOSPITAL TO CENTRAL_DOCTOR;
+GRANT CONNECT TO CENTRAL_DOCTOR;
+
+--触发器，自动将HOSPITAL_DOCTORS表中用户设置为CENTRAL_DOCTOR
+CREATE OR REPLACE TRIGGER grant_doctor_role
+AFTER INSERT ON HOSPITAL_DOCTORS
+FOR EACH ROW
+BEGIN
+    -- 在插入新行后，将 Doctor 角色授予新用户。
+    EXECUTE IMMEDIATE 'GRANT CENTRAL_DOCTOR TO ' || :NEW.IDENTITY_CARD_ID;
+END;
+
+
+---------------------------------------------------------------------------------
+--医院同步政府信息
+CREATE OR REPLACE TRIGGER hospital_sync_trigger
+AFTER UPDATE ON HOSPITAL
+FOR EACH ROW
+BEGIN
+  -- 只同步修改了的数据
+  IF :NEW.HAS_SERIOUS_ILLNESS <> :OLD.HAS_SERIOUS_ILLNESS
+  THEN
+    -- 更新GOVERNMENT_CITIZEN表中对应的记录
+    UPDATE GOVERNMENT_CITIZEN
+    SET HAS_SERIOUS_ILLNESS = :NEW.HAS_SERIOUS_ILLNESS
+    WHERE IDENTITY_CARD_ID = :NEW.IDENTITY_CARD_ID;
+  END IF;
+END hospital_sync_trigger;
+---------------------------------------------------------------------------
+--医院修改诊疗记录为'Cancer', 'Asthma', 'Epilepsy', 'HIV', 'Parkinson''s Disease', 'Stroke', 'Alzheimer''s Disease'则修改HAS_SERIOUS_ILLNESS 0->1
+CREATE OR REPLACE TRIGGER update_serious_illness_trigger
+BEFORE UPDATE ON HOSPITAL
+FOR EACH ROW
+BEGIN
+    IF :NEW.MEDICAL_RECORD IN ('Cancer', 'Asthma', 'Epilepsy', 'HIV', 'Parkinson''s Disease', 'Stroke', 'Alzheimer''s Disease') THEN
+        :NEW.HAS_SERIOUS_ILLNESS := 1;
+    END IF;
+END update_serious_illness_trigger;
+----------------------------------------------------------------------------
+
+
+
+
+SELECT TRIGGER_NAME, TRIGGER_BODY
+FROM ALL_TRIGGERS
+WHERE OWNER = 'SYSTEM' AND TRIGGER_NAME = 'HOSPITAL_SYNC_TRIGGER';
+
+SELECT TEXT
+FROM ALL_SOURCE
+WHERE TYPE = 'TRIGGER' AND NAME = 'HOSPITAL_SYNC_TRIGGER' AND OWNER = 'SYSTEM';
+
+SELECT TRIGGER_NAME, TABLE_NAME, TRIGGER_TYPE, TRIGGERING_EVENT
+FROM ALL_TRIGGERS
+WHERE OWNER = 'SYSTEM';
+
+SHOW ERRORS TRIGGER hospital_sync_trigger
+ALTER TRIGGER hospital_sync_trigger ENABLE;
