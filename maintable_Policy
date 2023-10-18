@@ -1,0 +1,25 @@
+FUNCTION check_access (
+ v_schema IN VARCHAR2,
+ v_obj IN VARCHAR2
+)
+RETURN VARCHAR2 AS
+ condition VARCHAR2 (200);
+ user_count NUMBER;
+BEGIN
+ IF (USER = 'SYSTEM') THEN
+ RETURN '1=1'; -- 允许 SYSTEM 用户查看所有信息
+ ELSE
+ -- 使用查询检查是否存在检查官用户的记录。
+ SELECT COUNT(*)
+ INTO user_count
+ FROM inspection_office
+ WHERE IDENTITY_CARD_ID = USER;
+ IF user_count > 0 THEN
+ RETURN '1=1'; -- 允许医生用户访问数据。
+ ELSE
+ -- 否则，根据当前用户的身份证与数据中的身份证匹配
+ condition := 'IDENTITY_CARD_ID = SYS_CONTEXT(''USERENV'', ''SESSION_USER'')';
+ END IF;
+ END IF; 
+ RETURN condition;
+END check_access;
