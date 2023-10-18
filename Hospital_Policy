@@ -1,0 +1,83 @@
+--Set role
+CREATE ROLE CENTRAL_DOCTOR;
+GRANT SELECT, INSERT, UPDATE, DELETE ON HOSPITAL TO CENTRAL_DOCTOR;
+GRANT CONNECT TO CENTRAL_DOCTOR;
+GRANT  CENTRAL_DOCTOR TO "0000000001";
+
+--触发器，自动将HOSPITAL_DOCTORS表中用户设置为DOCTOR
+CREATE OR REPLACE TRIGGER grant_doctor_role
+AFTER INSERT ON HOSPITAL_DOCTORS
+FOR EACH ROW
+BEGIN
+    -- 在插入新行后，将 Doctor 角色授予新用户。
+    EXECUTE IMMEDIATE 'GRANT Doctor TO ' || :NEW.USERNAME;
+END;
+
+--select
+CREATE OR REPLACE FUNCTION CHECK_HOSPITAL_ACCESS(
+    schema_var IN VARCHAR2,
+    table_var IN VARCHAR2
+) RETURN VARCHAR2 AS
+   user_count NUMBER;
+   result_condition VARCHAR2(1000);
+BEGIN
+    IF (USER = 'SYSTEM') THEN
+        RETURN '1=1'; -- 允许 SYSTEM 用户查看所有信息
+    ELSE
+        -- 使用查询检查是否存在医生用户的记录。
+        SELECT COUNT(*)
+        INTO user_count
+        FROM HOSPITAL_DOCTORS
+        WHERE IDENTITY_CARD_ID = USER;
+        -- 使用查询检查是否存在检察官用户的记录。
+        SELECT COUNT(*)
+        INTO user_count
+        FROM inspection_office
+        WHERE IDENTITY_CARD_ID = USER;
+        
+        IF user_count > 0 THEN
+            RETURN '1=1'; -- 允许医生用户访问数据。
+        ELSE
+            -- 其他用户只能查看其自身的记录
+            result_condition := 'IDENTITY_CARD_ID = ''' || SYS_CONTEXT('USERENV', 'SESSION_USER') || '''';
+            RETURN result_condition;
+        END IF; -- 这里需要添加一个 END IF
+    END IF; -- 这里需要添加一个 END IF
+END CHECK_HOSPITAL_ACCESS;
+
+
+BEGIN
+    DBMS_RLS.ADD_POLICY(
+        object_schema   => 'SYSTEM', -- "HOSPITAL" 表所在的模式
+        object_name     => 'HOSPITAL',
+        policy_name     => 'restrict_hospital_access',
+        function_schema => 'SYSTEM', -- 存储过程所在的模式
+        policy_function => 'check_hospital_access',
+        statement_types => 'SELECT'
+    );
+END;
+
+
+
+
+
+
+--update
+CREATE OR REPLACE FUNCTION check_update(v_schema IN VARCHAR2, v_obj IN VARCHAR2)
+RETURN VARCHAR2 AS 
+BEGIN
+	RETURN 'ATTENDING_PHYSICIAN = (select IDENTITY_CARD_ID from system.HOSPITAL_DOCTORS where IDENTITY_CARD_ID = SYS_CONTEXT(''USERENV'', ''SESSION_USER'')) AND IDENTITY_CARD_ID <> SYS_CONTEXT(''USERENV'', ''SESSION_USER'')';
+END check_update;
+
+
+-- 添加策略
+BEGIN
+   DBMS_RLS.ADD_POLICY(
+      object_schema     => 'SYSTEM',
+      object_name       => 'HOSPITAL',
+      policy_name       => 'RESTRICT_HOSPITAL_UPDATE',
+      function_schema   => 'SYSTEM',
+      policy_function   => 'check_update',
+      statement_types   => 'UPDATE'
+   );
+END;
